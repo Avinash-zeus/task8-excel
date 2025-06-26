@@ -13,13 +13,13 @@ export default class Grid {
         this.gridContainer.classList.add('gc');
         this.container.appendChild(this.gridContainer);
 
-        // Data structures
-        this.columns = Array.from({ length: totalCols }, (_, i) => new Column(i, 100, totalRows));
-        this.rows = Array.from({ length: totalRows }, (_, i) => new Row(i, 25, totalCols));
-
         this.spacerContainer = document.createElement('div');
         this.spacerContainer.classList.add('sc');
         this.gridContainer.appendChild(this.spacerContainer);
+
+        // Data structures
+        this.columns = Array.from({ length: totalCols }, (_, i) => new Column(i, 100, totalRows));
+        this.rows = Array.from({ length: totalRows }, (_, i) => new Row(i, 25, totalCols));
 
         // Spacer for scroll
         this.virtualWidth = totalCols * this.columns[0].width + 30;
@@ -62,9 +62,9 @@ export default class Grid {
             startSize: 0
         };
 
-        // this.gridContainer.addEventListener('mousedown', this.onMouseDown.bind(this));
-        // this.gridContainer.addEventListener('mousemove', this.onMouseMove.bind(this));
-        // this.gridContainer.addEventListener('mouseup', this.onMouseUp.bind(this));
+        this.gridContainer.addEventListener('mousedown', this.onMouseDown.bind(this));
+        this.gridContainer.addEventListener('mousemove', this.onMouseMove.bind(this));
+        this.gridContainer.addEventListener('mouseup', this.onMouseUp.bind(this));
 
         // Scroll sync
         this.spacerContainer.addEventListener('scroll', () => {
@@ -124,7 +124,7 @@ export default class Grid {
     }
 
     onMouseDown(e) {
-        const rect = this.canvas.getBoundingClientRect();
+        const rect = this.gridContainer.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
 
@@ -162,9 +162,11 @@ export default class Grid {
     }
 
     onMouseMove(e) {
-        const rect = this.canvas.getBoundingClientRect();
+        const rect = this.gridContainer.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
+
+        if (x < this.headerWidth && y < this.headerHeight) return;
 
         if (this.resizing.type === null) {
             // Change cursor on hover
@@ -218,92 +220,6 @@ export default class Grid {
         this.spacer.style.height = this.virtualHeight + 'px';
     }
 
-    onClick(e) {
-        const rect = this.canvas.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-
-        // Find visible columns/rows
-        const scrollX = this.spacerContainer.scrollLeft;
-        const scrollY = this.spacerContainer.scrollTop;
-
-        let startCol = 0, widthOfScrolledCols = 0;
-        for (const col of this.columns) {
-            if (widthOfScrolledCols + col.width > scrollX) break;
-            widthOfScrolledCols += col.width;
-            startCol++;
-        }
-        let startRow = 0, heightOfScrolledRows = 0;
-        for (const row of this.rows) {
-            if (heightOfScrolledRows + row.height > scrollY) break;
-            heightOfScrolledRows += row.height;
-            startRow++;
-        }
-
-        // Calculate which cell was clicked
-        let cellX = this.headerWidth + widthOfScrolledCols - scrollX;
-        let col = startCol;
-        while (col < this.totalCols && x > cellX + this.columns[col].width) {
-            cellX += this.columns[col].width;
-            col++;
-        }
-        if (x < this.headerWidth || col >= this.totalCols) return;
-
-        let cellY = this.headerHeight + heightOfScrolledRows - scrollY;
-        let row = startRow;
-        while (row < this.totalRows && y > cellY + this.rows[row].height) {
-            cellY += this.rows[row].height;
-            row++;
-        }
-        if (y < this.headerHeight || row >= this.totalRows) return;
-
-        // Only allow editing for data cells (not header)
-        if (row === 0) return;
-
-        // Get key for column
-        const keys = this.data && this.data[0] ? Object.keys(this.data[0]) : [];
-        if (!keys[col]) return;
-
-        // Remove any existing input
-        if (this.editInput) {
-            this.editInput.remove();
-            this.editInput = null;
-        }
-
-        // Create input element
-        const input = document.createElement('input');
-        input.classList.add('editInput');
-        input.type = 'text';
-        input.value = this.data[row - 1][keys[col]] ?? '';
-        input.style.left = (cellX) + 'px';
-        input.style.top = (cellY) + 'px';
-        input.style.width = this.columns[col].width + 'px';
-        input.style.height = this.rows[row].height + 'px';
-
-        // Insert input into grid container
-        this.gridContainer.appendChild(input);
-        input.focus();
-        this.editInput = input;
-
-        // Save on blur or Enter
-        const save = () => {
-            this.data[row - 1][keys[col]] = input.value;
-            input.remove();
-            this.editInput = null;
-            this.renderGrid();
-        };
-        input.addEventListener('blur', save);
-        input.addEventListener('keydown', (ev) => {
-            if (ev.key === 'Enter') {
-                save();
-            } else if (ev.key === 'Escape') {
-                input.remove();
-                this.editInput = null;
-                this.renderGrid();
-            }
-        });
-    }
-
     renderGrid() {
         // Get scroll positions
         const scrollX = this.spacerContainer.scrollLeft;
@@ -331,29 +247,31 @@ export default class Grid {
         }
         const endRow = Math.min(startRow + 40, this.totalRows);
 
-        // Draw column headers
+        // column headers ctx
         this.colHeaderCtx.font = "12px Arial";
         this.colHeaderCtx.textAlign = 'center';
         this.colHeaderCtx.textBaseline = 'middle';
+        this.colHeaderCtx.strokeStyle = '#e7e7e7';
         this.colHeaderCtx.fillStyle = '#f5f5f5';
         this.colHeaderCtx.fillRect(0, 0, this.colHeaderCanvas.width, this.headerHeight);
 
-        // Draw row headers
+        // row headers ctx
         this.rowHeaderCtx.font = "12px Arial";
         this.rowHeaderCtx.textAlign = 'center';
         this.rowHeaderCtx.textBaseline = 'middle';
+        this.rowHeaderCtx.strokeStyle = '#e7e7e7';
         this.rowHeaderCtx.fillStyle = '#f5f5f5';
         this.rowHeaderCtx.fillRect(0, 0, this.headerWidth, this.rowHeaderCanvas.height);
 
-        // Draw cells
+        // cells ctx
         this.cellsCtx.font = "12px Arial";
         this.cellsCtx.textAlign = 'start';
         this.cellsCtx.textBaseline = 'alphabetic';
         this.cellsCtx.strokeStyle = '#e7e7e7';
 
+        this.drawCells(startRow, endRow, startCol, endCol, widthOfScrolledCols, heightOfScrolledRows, this.cellsCtx, scrollX, scrollY);
         this.drawColHeader(startCol, endCol, widthOfScrolledCols, this.colHeaderCtx, scrollX);
         this.drawRowHeader(startRow, endRow, heightOfScrolledRows, this.rowHeaderCtx, scrollY);
-        this.drawCells(startRow, endRow, startCol, endCol, widthOfScrolledCols, heightOfScrolledRows, this.cellsCtx, scrollX, scrollY);
     }
 
     drawRowHeader(startRow, endRow, heightOfScrolledRows, ctx, scrollY) {
@@ -389,22 +307,14 @@ export default class Grid {
     }
 
     drawCells(startRow, endRow, startCol, endCol, widthOfScrolledCols, heightOfScrolledRows, ctx, scrollX, scrollY) {
-        const keys = this.data && this.data[0] ? Object.keys(this.data[0]) : [];
         let y = 0 + heightOfScrolledRows - scrollY;
+
         for (let i = startRow; i < endRow; i++) {
             let x = 0 + widthOfScrolledCols - scrollX;
+
             for (let j = startCol; j < endCol; j++) {
-                let cellData = '';
-
-                if (i == 0) {
-                    if (keys[j]) cellData = keys[j];
-                }
-                else if (this.data && this.data[i - 1]) {
-                    if (keys[j]) cellData = this.data[i - 1][keys[j]];
-                }
-
                 const cell = new Cell(this.rows[i], this.columns[j]);
-                cell.drawCell(ctx, x, y, cellData);
+                cell.drawCell(ctx, x, y, this.data.getCell(i, j));
                 x += this.columns[j].width;
             }
             y += this.rows[i].height;

@@ -1,8 +1,9 @@
 import Grid from "./grid.js";
 import Row from "./row.js";
+import DataStore from "./dataStore.js";
 
 const container = document.getElementById('container');
 
 const res = await fetch('data.json');
 const data = await res.json();
-const grid = new Grid(container, data);
+const grid = new Grid(container, new DataStore(data));
