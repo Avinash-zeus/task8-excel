@@ -1,6 +1,7 @@
 import Cell from "./cell.js";
 import Row from "./row.js";
 import Column from './column.js';
+import { Resizer } from "./resizer.js";
 
 export default class Grid {
     constructor(container, data = [], totalRows = 100000, totalCols = 500) {
@@ -55,16 +56,13 @@ export default class Grid {
         this.gridContainer.appendChild(this.cellsCanvas);
         this.cellsCtx = this.cellsCanvas.getContext("2d");
 
-        this.resizing = {
-            type: null, // "row" or "col"
-            index: -1,
-            startPos: 0,
-            startSize: 0
-        };
+        this.resizer = new Resizer(this);
 
-        this.gridContainer.addEventListener('mousedown', this.onMouseDown.bind(this));
-        this.gridContainer.addEventListener('mousemove', this.onMouseMove.bind(this));
-        this.gridContainer.addEventListener('mouseup', this.onMouseUp.bind(this));
+        this.gridContainer.addEventListener('pointerdown', this.onPointerDown.bind(this));
+        this.gridContainer.addEventListener('pointermove', this.onPointerMove.bind(this));
+        this.gridContainer.addEventListener('pointerup', this.onPointerUp.bind(this));
+
+        this.gridContainer.addEventListener('dblclick', this.onCellDblClick.bind(this));
 
         // Scroll sync
         this.spacerContainer.addEventListener('scroll', () => {
@@ -123,101 +121,108 @@ export default class Grid {
         this.renderGrid();
     }
 
-    onMouseDown(e) {
-        const rect = this.gridContainer.getBoundingClientRect();
+    onPointerDown(e) {
+        this.resizer.onPointerDown(e);
+    }
+
+    onPointerMove(e) {
+        this.resizer.onPointerMove(e);
+    }
+
+    onPointerUp() {
+        this.resizer.onPointerUp();
+    }
+
+    onCellDblClick(e) {
+        const rect = this.cellsCanvas.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
 
-        // Column resize zone detection
-        let left = this.headerWidth - this.spacerContainer.scrollLeft;
-        for (let j = 0; j < this.columns.length; j++) {
-            const col = this.columns[j];
-            if (Math.abs(x - (left + col.width)) < 5 && y < this.headerHeight) {
-                this.resizing = {
-                    type: 'col',
-                    index: j,
-                    startPos: x,
-                    startSize: col.width
-                };
-                return;
-            }
-            left += col.width;
+        // Find visible rows/cols
+        const scrollX = this.spacerContainer.scrollLeft;
+        const scrollY = this.spacerContainer.scrollTop;
+
+        let startCol = 0, widthOfScrolledCols = 0;
+        for (const col of this.columns) {
+            if (widthOfScrolledCols + col.width > scrollX) break;
+            widthOfScrolledCols += col.width;
+            startCol++;
+        }
+        let startRow = 0, heightOfScrolledRows = 0;
+        for (const row of this.rows) {
+            if (heightOfScrolledRows + row.height > scrollY) break;
+            heightOfScrolledRows += row.height;
+            startRow++;
         }
 
-        // Row resize zone detection
-        let top = this.headerHeight - this.spacerContainer.scrollTop;
-        for (let i = 0; i < this.rows.length; i++) {
-            const row = this.rows[i];
-            if (Math.abs(y - (top + row.height)) < 5 && x < this.headerWidth) {
-                this.resizing = {
-                    type: 'row',
-                    index: i,
-                    startPos: y,
-                    startSize: row.height
-                };
-                return;
-            }
-            top += row.height;
+        // Find cell indices
+        let cellX = 0 + widthOfScrolledCols - scrollX;
+        let colIdx = startCol;
+        for (; colIdx < this.columns.length; colIdx++) {
+            if (x < cellX + this.columns[colIdx].width) break;
+            cellX += this.columns[colIdx].width;
         }
+        let cellY = 0 + heightOfScrolledRows - scrollY;
+        let rowIdx = startRow;
+        for (; rowIdx < this.rows.length; rowIdx++) {
+            if (y < cellY + this.rows[rowIdx].height) break;
+            cellY += this.rows[rowIdx].height;
+        }
+
+        if (colIdx >= this.columns.length || rowIdx >= this.rows.length) return;
+
+        this.startCellEdit(rowIdx, colIdx, cellX, cellY);
     }
 
-    onMouseMove(e) {
-        const rect = this.gridContainer.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-
-        if (x < this.headerWidth && y < this.headerHeight) return;
-
-        if (this.resizing.type === null) {
-            // Change cursor on hover
-            let left = this.headerWidth - this.spacerContainer.scrollLeft;
-            for (let j = 0; j < this.columns.length; j++) {
-                const col = this.columns[j];
-                if (Math.abs(x - (left + col.width)) < 5 && y < this.headerHeight) {
-                    this.spacerContainer.style.cursor = 'col-resize';
-                    return;
-                }
-                left += col.width;
-            }
-
-            let top = this.headerHeight - this.spacerContainer.scrollTop;
-            for (let i = 0; i < this.rows.length; i++) {
-                const row = this.rows[i];
-                if (Math.abs(y - (top + row.height)) < 5 && x < this.headerWidth) {
-                    this.spacerContainer.style.cursor = 'row-resize';
-                    return;
-                }
-                top += row.height;
-            }
-
-            this.spacerContainer.style.cursor = 'default';
+    startCellEdit(row, col, cellX, cellY) {
+        if (this.editInput) {
+            this.editInput.remove();
+            this.editInput = null;
         }
+        this.editingCell = { row, col };
 
-        // Resize handling
-        if (this.resizing.type === 'col') {
-            const dx = x - this.resizing.startPos;
-            const newWidth = Math.max(30, this.resizing.startSize + dx);
-            this.virtualWidth += -this.columns[this.resizing.index].width + newWidth;
-            this.columns[this.resizing.index].width = newWidth;
-            this.updateSpacerSize();
-            this.renderGrid();
-        } else if (this.resizing.type === 'row') {
-            const dy = y - this.resizing.startPos;
-            const newHeight = Math.max(15, this.resizing.startSize + dy);
-            this.virtualHeight += -this.rows[this.resizing.index].height + newHeight;
-            this.rows[this.resizing.index].height = newHeight;
-            this.updateSpacerSize();
-            this.renderGrid();
-        }
+        const value = this.data.getCell(row, col) ?? "";
+
+        this.editInput = document.createElement('input');
+        this.editInput.classList.add('editInput');
+        this.editInput.type = 'text';
+        this.editInput.value = value;
+        this.editInput.style.left = (this.headerWidth + cellX) + 'px';
+        this.editInput.style.top = (this.headerHeight + cellY) + 'px';
+        this.editInput.style.width = this.columns[col].width + 'px';
+        this.editInput.style.height = this.rows[row].height + 'px';
+        this.editInput.style.fontSize = '12px';
+        this.editInput.style.zIndex = 10;
+
+        this.gridContainer.appendChild(this.editInput);
+        this.editInput.focus();
+
+        this.editInput.addEventListener('blur', () => this.commitCellEdit());
+        this.editInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                this.commitCellEdit();
+            } else if (e.key === 'Escape') {
+                this.cancelCellEdit();
+            }
+        });
     }
 
-    onMouseUp() {
-        this.resizing.type = null;
+    commitCellEdit() {
+        if (!this.editInput || !this.editingCell) return;
+        const { row, col } = this.editingCell;
+        this.data.setCell(row, col, this.editInput.value);
+        this.editInput.remove();
+        this.editInput = null;
+        this.editingCell = null;
+        this.renderGrid();
     }
 
-    updateSpacerSize() {
-        this.spacer.style.width = this.virtualWidth + 'px';
-        this.spacer.style.height = this.virtualHeight + 'px';
+    cancelCellEdit() {
+        if (this.editInput) {
+            this.editInput.remove();
+            this.editInput = null;
+        }
+        this.editingCell = null;
     }
 
     renderGrid() {
@@ -285,8 +290,8 @@ export default class Grid {
             ctx.fillText(label, this.headerWidth / 2, y + height / 2);
 
             y += height;
-            this.drawLine(0, y, this.headerWidth, y, ctx);
-            this.drawLine(0, y, this.cellsCanvas.width, y, this.cellsCtx);
+            this.drawLine(0, y + 0.5, this.headerWidth, y + 0.5, ctx);
+            this.drawLine(0, y + 0.5, this.cellsCanvas.width, y + 0.5, this.cellsCtx);
         }
     }
 
@@ -301,8 +306,8 @@ export default class Grid {
             ctx.fillText(label, x + width / 2, this.headerHeight / 2);
 
             x += width;
-            this.drawLine(x, 0, x, this.headerHeight, ctx);
-            this.drawLine(x, 0, x, this.cellsCanvas.height, this.cellsCtx);
+            this.drawLine(x + 0.5, 0, x + 0.5, this.headerHeight, ctx);
+            this.drawLine(x + 0.5, 0, x + 0.5, this.cellsCanvas.height, this.cellsCtx);
         }
     }
 

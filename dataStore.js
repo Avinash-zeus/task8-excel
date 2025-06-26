@@ -22,8 +22,6 @@ export default class DataStore {
                 )
             );
         }
-
-        console.log(this.data);
     }
 
     getCell(row, col) {

@@ -11,7 +11,7 @@ export default class Cell {
         ctx.fillText(content, x + 6, y + 16);
     }
 
-    editData(val) {
+    editCell() {
         this.data = val;
     }
 }
