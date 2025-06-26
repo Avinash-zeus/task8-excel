@@ -23,8 +23,8 @@ export default class Grid {
         this.rows = Array.from({ length: totalRows }, (_, i) => new Row(i, 25, totalCols));
 
         // Spacer for scroll
-        this.virtualWidth = totalCols * this.columns[0].width + 30;
-        this.virtualHeight = totalRows * this.rows[0].height + 10;
+        this.virtualWidth = totalCols * this.columns[0].width + 50;
+        this.virtualHeight = totalRows * this.rows[0].height + 30;
         this.spacer = document.createElement('div');
         this.spacer.style.width = this.virtualWidth + 'px';
         this.spacer.style.height = this.virtualHeight + 'px';
@@ -62,12 +62,19 @@ export default class Grid {
         this.gridContainer.addEventListener('pointermove', this.onPointerMove.bind(this));
         this.gridContainer.addEventListener('pointerup', this.onPointerUp.bind(this));
 
-        this.gridContainer.addEventListener('dblclick', this.onCellDblClick.bind(this));
+        // Inut box to edit cell
+        this.editInput = document.createElement('input');
+        this.editInput.classList.add('editInput');
+        this.editInput.type = 'text';
+
+        this.gridContainer.addEventListener('click', this.onClick.bind(this));
+        this.gridContainer.addEventListener('dblclick', this.onDblClick.bind(this));
 
         // Scroll sync
         this.spacerContainer.addEventListener('scroll', () => {
             requestAnimationFrame(() => {
                 this.renderGrid();
+                this.updateEditInputPosition();
             })
         });
 
@@ -133,7 +140,10 @@ export default class Grid {
         this.resizer.onPointerUp();
     }
 
-    onCellDblClick(e) {
+    onClick(e) {
+    }
+
+    onDblClick(e) {
         const rect = this.cellsCanvas.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
@@ -171,30 +181,18 @@ export default class Grid {
 
         if (colIdx >= this.columns.length || rowIdx >= this.rows.length) return;
 
-        this.startCellEdit(rowIdx, colIdx, cellX, cellY);
+        this.startCellEdit(rowIdx, colIdx);
     }
 
-    startCellEdit(row, col, cellX, cellY) {
-        if (this.editInput) {
-            this.editInput.remove();
-            this.editInput = null;
-        }
+    startCellEdit(row, col) {
+        this.editInput.style.display = '';
         this.editingCell = { row, col };
 
         const value = this.data.getCell(row, col) ?? "";
-
-        this.editInput = document.createElement('input');
-        this.editInput.classList.add('editInput');
-        this.editInput.type = 'text';
         this.editInput.value = value;
-        this.editInput.style.left = (this.headerWidth + cellX) + 'px';
-        this.editInput.style.top = (this.headerHeight + cellY) + 'px';
-        this.editInput.style.width = this.columns[col].width + 'px';
-        this.editInput.style.height = this.rows[row].height + 'px';
-        this.editInput.style.fontSize = '12px';
-        this.editInput.style.zIndex = 10;
 
         this.gridContainer.appendChild(this.editInput);
+        this.updateEditInputPosition();
         this.editInput.focus();
 
         this.editInput.addEventListener('blur', () => this.commitCellEdit());
@@ -208,21 +206,72 @@ export default class Grid {
     }
 
     commitCellEdit() {
-        if (!this.editInput || !this.editingCell) return;
+        if (!this.editingCell) return;
         const { row, col } = this.editingCell;
         this.data.setCell(row, col, this.editInput.value);
-        this.editInput.remove();
-        this.editInput = null;
-        this.editingCell = null;
+        this.editInput.style.display = 'none';
         this.renderGrid();
     }
 
     cancelCellEdit() {
-        if (this.editInput) {
-            this.editInput.remove();
-            this.editInput = null;
+        if (this.editingCell) {
+            this.editInput.style.display = 'none';
         }
-        this.editingCell = null;
+    }
+
+    updateEditInputPosition() {
+        if (!this.editingCell) return;
+        const { row, col } = this.editingCell;
+
+        const scrollX = this.spacerContainer.scrollLeft;
+        const scrollY = this.spacerContainer.scrollTop;
+
+        let cellX = 0, cellY = 0;
+        for (let j = 0; j < col; j++) cellX += this.columns[j].width;
+        for (let i = 0; i < row; i++) cellY += this.rows[i].height;
+        cellX -= scrollX;
+        cellY -= scrollY;
+
+        let left = this.headerWidth + cellX;
+        let top = this.headerHeight + cellY;
+        let width = this.columns[col].width;
+        let height = this.rows[row].height;
+
+        // Get grid container visible area
+        const containerWidth = this.gridContainer.clientWidth;
+        const containerHeight = this.gridContainer.clientHeight;
+
+        // Clamp left/top so input never goes outside the grid container
+        if (left < this.headerWidth) {
+            width -= (this.headerWidth - left);
+            left = this.headerWidth;
+        }
+        if (top < this.headerHeight) {
+            height -= (this.headerHeight - top);
+            top = this.headerHeight;
+        }
+
+        // Clamp right/bottom so input never overflows grid container
+        if (left + width > containerWidth) {
+            width = Math.max(0, containerWidth - left);
+        }
+        if (top + height > containerHeight) {
+            height = Math.max(0, containerHeight - top);
+        }
+
+        // Hide if completely out of view
+        if (width <= 0 || height <= 0) {
+            this.editInput.style.display = 'none';
+            return;
+        } else {
+            this.editInput.style.display = '';
+            this.editInput.focus();
+        }
+
+        this.editInput.style.left = left + 'px';
+        this.editInput.style.top = top + 'px';
+        this.editInput.style.width = width + 'px';
+        this.editInput.style.height = height + 'px';
     }
 
     renderGrid() {

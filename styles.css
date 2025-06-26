@@ -52,9 +52,11 @@ body {
 .editInput {
     position: absolute;
     z-index: 5;
+    padding: 2px 6px;
+    font-size: 12px;
 }
 
 .editInput:focus {
-    border: 2px solid #137e43;
     outline: none;
+    border: none;
 }
