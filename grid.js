@@ -2,6 +2,7 @@ import Cell from "./cell.js";
 import Row from "./row.js";
 import Column from './column.js';
 import { Resizer } from "./resizer.js";
+import { Selector } from "./selector.js";
 
 export default class Grid {
     constructor(container, data = [], totalRows = 100000, totalCols = 500) {
@@ -62,12 +63,12 @@ export default class Grid {
         this.gridContainer.addEventListener('pointermove', this.onPointerMove.bind(this));
         this.gridContainer.addEventListener('pointerup', this.onPointerUp.bind(this));
 
+        this.selector = new Selector(this);
+
         // Inut box to edit cell
         this.editInput = document.createElement('input');
         this.editInput.classList.add('editInput');
         this.editInput.type = 'text';
-
-        this.gridContainer.addEventListener('click', this.onClick.bind(this));
         this.gridContainer.addEventListener('dblclick', this.onDblClick.bind(this));
 
         // Scroll sync
@@ -129,59 +130,22 @@ export default class Grid {
     }
 
     onPointerDown(e) {
+        this.selector.onPointerDown(e);
         this.resizer.onPointerDown(e);
     }
 
     onPointerMove(e) {
+        this.selector.onPointerMove(e);
         this.resizer.onPointerMove(e);
     }
 
     onPointerUp() {
+        this.selector.onPointerUp();
         this.resizer.onPointerUp();
     }
 
-    onClick(e) {
-    }
-
     onDblClick(e) {
-        const rect = this.cellsCanvas.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-
-        // Find visible rows/cols
-        const scrollX = this.spacerContainer.scrollLeft;
-        const scrollY = this.spacerContainer.scrollTop;
-
-        let startCol = 0, widthOfScrolledCols = 0;
-        for (const col of this.columns) {
-            if (widthOfScrolledCols + col.width > scrollX) break;
-            widthOfScrolledCols += col.width;
-            startCol++;
-        }
-        let startRow = 0, heightOfScrolledRows = 0;
-        for (const row of this.rows) {
-            if (heightOfScrolledRows + row.height > scrollY) break;
-            heightOfScrolledRows += row.height;
-            startRow++;
-        }
-
-        // Find cell indices
-        let cellX = 0 + widthOfScrolledCols - scrollX;
-        let colIdx = startCol;
-        for (; colIdx < this.columns.length; colIdx++) {
-            if (x < cellX + this.columns[colIdx].width) break;
-            cellX += this.columns[colIdx].width;
-        }
-        let cellY = 0 + heightOfScrolledRows - scrollY;
-        let rowIdx = startRow;
-        for (; rowIdx < this.rows.length; rowIdx++) {
-            if (y < cellY + this.rows[rowIdx].height) break;
-            cellY += this.rows[rowIdx].height;
-        }
-
-        if (colIdx >= this.columns.length || rowIdx >= this.rows.length) return;
-
-        this.startCellEdit(rowIdx, colIdx);
+        this.startCellEdit(this.selector.selection.startRow, this.selector.selection.startCol);
     }
 
     startCellEdit(row, col) {
@@ -268,10 +232,10 @@ export default class Grid {
             this.editInput.focus();
         }
 
-        this.editInput.style.left = left + 'px';
-        this.editInput.style.top = top + 'px';
-        this.editInput.style.width = width + 'px';
-        this.editInput.style.height = height + 'px';
+        this.editInput.style.left = left + 2 + 'px';
+        this.editInput.style.top = top + 2 + 'px';
+        this.editInput.style.width = width - 4 + 'px';
+        this.editInput.style.height = height - 4 + 'px';
     }
 
     renderGrid() {
@@ -326,6 +290,7 @@ export default class Grid {
         this.drawCells(startRow, endRow, startCol, endCol, widthOfScrolledCols, heightOfScrolledRows, this.cellsCtx, scrollX, scrollY);
         this.drawColHeader(startCol, endCol, widthOfScrolledCols, this.colHeaderCtx, scrollX);
         this.drawRowHeader(startRow, endRow, heightOfScrolledRows, this.rowHeaderCtx, scrollY);
+        this.drawSelectionBox();
     }
 
     drawRowHeader(startRow, endRow, heightOfScrolledRows, ctx, scrollY) {
@@ -373,6 +338,39 @@ export default class Grid {
             }
             y += this.rows[i].height;
         }
+    }
+
+    drawSelectionBox() {
+        const selection = this.selector.selection;
+        if (selection.startRow === null) return;
+
+        const scrollX = this.spacerContainer.scrollLeft;
+        const scrollY = this.spacerContainer.scrollTop;
+
+        const startRow = Math.min(selection.startRow, selection.endRow);
+        const endRow = Math.max(selection.startRow, selection.endRow);
+        const startCol = Math.min(selection.startCol, selection.endCol);
+        const endCol = Math.max(selection.startCol, selection.endCol);
+
+        // Calculate top-left and bottom-right cell positions
+        let left = 0, top = 0;
+        for (let j = 0; j < startCol; j++) left += this.columns[j].width;
+        for (let i = 0; i < startRow; i++) top += this.rows[i].height;
+        let right = left;
+        for (let j = startCol; j <= endCol; j++) right += this.columns[j].width;
+        let bottom = top;
+        for (let i = startRow; i <= endRow; i++) bottom += this.rows[i].height;
+
+        // Adjust for scroll and header
+        left = left - scrollX;
+        top = top - scrollY;
+
+        // Draw rectangle on cells canvas
+        this.cellsCtx.save();
+        this.cellsCtx.strokeStyle = '#137e43';
+        this.cellsCtx.lineWidth = 2;
+        this.cellsCtx.strokeRect(left, top, right - left, bottom - top);
+        this.cellsCtx.restore();
     }
 
     drawLine(startX, startY, endX, endY, ctx) {

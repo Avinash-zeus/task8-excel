@@ -21,7 +21,6 @@ body {
     height: 100%;
     position: relative;
     background-color: #f5f5f5;
-    touch-action: none;
 }
 
 .sc {
@@ -30,6 +29,7 @@ body {
     height: 100%;
     position: absolute;
     z-index: 30;
+    touch-action: none;
 }
 
 .colHeaderCanvas {
@@ -52,7 +52,7 @@ body {
 .editInput {
     position: absolute;
     z-index: 5;
-    padding: 2px 6px;
+    padding: 2px;
     font-size: 12px;
 }
 
